@@ -1,10 +1,10 @@
-import pygame
+from PIL import Image, ImageDraw, ImageFont
 
 from py3d.core_ext.texture import Texture
 
 class TextTexture(Texture):
     """
-    Define a text texture by using pygame
+    Define a text texture by using Pillow
     """
     def __init__(self, text="Python graphics",
                  system_font_name="Arial",
@@ -20,38 +20,53 @@ class TextTexture(Texture):
                  image_border_width=0,
                  image_border_color=(0, 0, 0)):
         super().__init__()
-        # Set a default font
-        font = pygame.font.SysFont(system_font_name, font_size)
-        # The font can be overrided by loading font file
+
+        # Load font from file if available, otherwise try a system-like font, then fallback.
         if font_file_name is not None:
-            font = pygame.font.Font(font_file_name, font_size)
-        # Render text to (antialiased) surface
-        font_surface = font.render(text, True, font_color)
-        # Determine size of rendered text for alignment purposes
-        (text_width, text_height) = font.size(text)
+            font = ImageFont.truetype(font_file_name, font_size)
+        else:
+            try:
+                font = ImageFont.truetype(system_font_name, font_size)
+            except OSError:
+                font = ImageFont.load_default()
+
+        # Measure text bounds.
+        scratch = Image.new("RGBA", (1, 1), (0, 0, 0, 0))
+        scratch_draw = ImageDraw.Draw(scratch)
+        left, top, right, bottom = scratch_draw.textbbox((0, 0), text, font=font)
+        text_width = right - left
+        text_height = bottom - top
+
         # If image dimensions are not specified,
-        # use the font surface size as default
+        # use the text bounds size as default.
         if image_width is None:
             image_width = text_width
         if image_height is None:
             image_height = text_height
-        # Create a surface to store the image of text
-        # (with the transparency channel by default)
-        self._surface = pygame.Surface((image_width, image_height),
-                                       pygame.SRCALPHA)
+
+        # Create target image with alpha channel.
+        if transparent:
+            background_rgba = (0, 0, 0, 0)
+        else:
+            background_rgba = (*background_color, 255)
+        self._surface = Image.new("RGBA", (image_width, image_height), background_rgba)
+        draw = ImageDraw.Draw(self._surface)
+
         # Set a background color used when not transparent
-        if not transparent:
-            self._surface.fill(background_color)
         # Attributes align_horizontal, align_vertical define percentages,
-        # measured from top-left corner
-        corner_point = (align_horizontal * (image_width - text_width),
-                        align_vertical * (image_height - text_height))
-        destination_rectangle = font_surface.get_rect(topleft=corner_point)
+        # measured from top-left corner.
+        x = align_horizontal * (image_width - text_width)
+        y = align_vertical * (image_height - text_height)
+
         # Add border (optionally)
         if image_border_width > 0:
-            pygame.draw.rect(self._surface, image_border_color,
-                             [0, 0, image_width, image_height], image_border_width)
-        # Apply font_surface to a correct position on the final surface
-        self._surface.blit(font_surface, destination_rectangle)
+            draw.rectangle(
+                [0, 0, image_width - 1, image_height - 1],
+                outline=image_border_color,
+                width=image_border_width,
+            )
+
+        # Draw text at aligned location.
+        draw.text((x - left, y - top), text, fill=font_color, font=font)
         self.upload_data()
 

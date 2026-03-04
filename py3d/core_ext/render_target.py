@@ -1,5 +1,5 @@
 import OpenGL.GL as GL
-import pygame
+from PIL import Image
 
 from py3d.core_ext.texture import Texture
 
@@ -23,7 +23,7 @@ class RenderTarget:
                 }
             )
             self._texture.set_properties(property_dict)
-            self._texture.surface = pygame.Surface(resolution)
+            self._texture.surface = Image.new("RGBA", resolution, (0, 0, 0, 0))
             self._texture.upload_data()
         # Create a framebuffer
         self._framebuffer_ref = GL.glGenFramebuffers(1)

@@ -1,35 +1,52 @@
-import pygame
-import sys
+from time import perf_counter
+import tkinter as tk
+
+import OpenGL.GL as GL
+from pyopengltk import OpenGLFrame
 
 from py3d.core.input import Input
 from py3d.core.utils import Utils
 
 
+class _BaseOpenGLFrame(OpenGLFrame):
+    def __init__(self, parent, owner):
+        super().__init__(parent)
+        self._owner = owner
+
+    def initgl(self):
+        self._owner._on_gl_initialize()
+
+    def redraw(self):
+        self._owner._on_gl_redraw(self.winfo_width(), self.winfo_height())
+
+
 class Base:
     def __init__(self, screen_size=(512, 512)):
-        # Initialize all pygame modules
-        pygame.init()
-        # Indicate rendering details
-        display_flags = pygame.DOUBLEBUF | pygame.OPENGL
-        # Initialize buffers to perform antialiasing
-        pygame.display.gl_set_attribute(pygame.GL_MULTISAMPLEBUFFERS, 1)
-        pygame.display.gl_set_attribute(pygame.GL_MULTISAMPLESAMPLES, 4)
-        # Use a core OpenGL profile for cross-platform compatibility
-        pygame.display.gl_set_attribute(pygame.GL_CONTEXT_PROFILE_MASK, pygame.GL_CONTEXT_PROFILE_CORE)
-        # Create and display the window
-        self._screen = pygame.display.set_mode(screen_size, display_flags)
-        # Set the text that appears in the title bar of the window
-        pygame.display.set_caption("Graphics Window")
+        width = max(1, int(screen_size[0]))
+        height = max(1, int(screen_size[1]))
+        self._screen_size = (width, height)
         # Determine if main loop is active
         self._running = True
-        # Manage time-related data and operations
-        self._clock = pygame.time.Clock()
         # Manage user input
         self._input = Input()
         # number of seconds application has been running
-        self._time = 0
-        # Print the system information
-        Utils.print_system_info()
+        self._time = 0.0
+        self._delta_time = 0.0
+        self._last_time = None
+        self._initialized = False
+
+        self._root = tk.Tk()
+        self._root.title("Graphics Window")
+        self._root.geometry(f"{width}x{height}")
+        self._root.protocol("WM_DELETE_WINDOW", self._request_quit)
+
+        self._gl_frame = _BaseOpenGLFrame(self._root, owner=self)
+        self._gl_frame.pack(fill=tk.BOTH, expand=True)
+        self._gl_frame.animate = 1
+        self._screen = self._gl_frame  # legacy compatibility
+
+        self._root.bind_all("<KeyPress>", self._on_key_press)
+        self._root.bind_all("<KeyRelease>", self._on_key_release)
 
     @property
     def delta_time(self):
@@ -56,25 +73,56 @@ class Base:
         pass
 
     def run(self):
-        # Startup #
+        self._gl_frame.focus_set()
+        self._root.mainloop()
+
+    def _on_gl_initialize(self):
+        if self._initialized:
+            return
+        Utils.print_system_info()
         self.initialize()
-        # main loop #
-        while self._running:
-            # process input #
-            self._input.update()
-            if self._input.quit:
-                self._running = False
-            # seconds since iteration of run loop
-            self._delta_time = self._clock.get_time() / 1000
-            # Increment time application has been running
-            self._time += self._delta_time
-            # Update #
-            self.update()
-            # Render #
-            # Display image on screen
-            pygame.display.flip()
-            # Pause if necessary to achieve 60 FPS
-            self._clock.tick(60)
-        # Shutdown #
-        pygame.quit()
-        sys.exit()
+        self._last_time = perf_counter()
+        self._initialized = True
+
+    def _on_gl_redraw(self, width, height):
+        if not self._initialized:
+            return
+
+        # Keep viewport in sync with widget size.
+        GL.glViewport(0, 0, max(1, int(width)), max(1, int(height)))
+
+        current_time = perf_counter()
+        self._delta_time = current_time - self._last_time
+        self._last_time = current_time
+        self._time += self._delta_time
+
+        self._input.update()
+        if self._input.quit:
+            self._shutdown()
+            return
+
+        self.update()
+
+    def _request_quit(self):
+        self._input.set_quit(True)
+
+    def _shutdown(self):
+        if not self._running:
+            return
+        self._running = False
+        self._gl_frame.animate = 0
+        self._root.after(0, self._root.destroy)
+
+    def _on_key_press(self, event):
+        key_name = self._normalize_key(event.keysym)
+        self._input.register_key_down(key_name)
+
+    def _on_key_release(self, event):
+        key_name = self._normalize_key(event.keysym)
+        self._input.register_key_up(key_name)
+
+    @staticmethod
+    def _normalize_key(keysym):
+        if not keysym:
+            return None
+        return keysym.lower()

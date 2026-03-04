@@ -1,5 +1,4 @@
 import OpenGL.GL as GL
-import pygame
 
 from py3d.core_ext.mesh import Mesh
 from py3d.light.light import Light
@@ -7,12 +6,12 @@ from py3d.light.shadow import Shadow
 
 
 class Renderer:
-    def __init__(self, clear_color=(0, 0, 0)):
+    def __init__(self, clear_color=(0, 0, 0), window_size=(800, 600)):
         GL.glEnable(GL.GL_DEPTH_TEST)
         # required for antialiasing
         GL.glEnable(GL.GL_MULTISAMPLE)
         GL.glClearColor(*clear_color, 1)
-        self._window_size = pygame.display.get_surface().get_size()
+        self._window_size = window_size
         self._shadows_enabled = False
 
     @property
@@ -24,6 +23,9 @@ class Renderer:
         return self._shadow_object
 
     def render(self, scene, camera, clear_color=True, clear_depth=True, render_target=None):
+        if render_target is None:
+            self._window_size = self._read_current_viewport_size(default_size=self._window_size)
+
         # Filter descendents
         descendant_list = scene.descendant_list
         mesh_filter = lambda x: isinstance(x, Mesh)
@@ -117,3 +119,14 @@ class Renderer:
     def enable_shadows(self, shadow_light, strength=0.5, resolution=(512, 512)):
         self._shadows_enabled = True
         self._shadow_object = Shadow(shadow_light, strength=strength, resolution=resolution)
+
+    @staticmethod
+    def _read_current_viewport_size(default_size=(800, 600)):
+        viewport = GL.glGetIntegerv(GL.GL_VIEWPORT)
+        if viewport is None or len(viewport) < 4:
+            return default_size
+        width = int(viewport[2])
+        height = int(viewport[3])
+        if width <= 0 or height <= 0:
+            return default_size
+        return (width, height)

@@ -79,11 +79,11 @@ class GLApp(tk.Tk):
         self.geometry("1000x700")
         self.minsize(640, 480)
         self._last_window_size = (0, 0)
-        self._create_layout()
+        self._init_layout()
         self.bind("<Configure>", self._on_window_resize)
         self.log_panel.log("INFO", "Application started")
 
-    def _create_layout(self):
+    def _init_layout(self):
         paned = ttk.PanedWindow(self, orient=tk.VERTICAL)
         paned.pack(fill=tk.BOTH, expand=True)
 
