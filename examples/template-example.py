@@ -1,51 +1,24 @@
-#!/usr/bin/python3
-
-# """
-# Original Code (Preserved)
-# from py3d.core.base import Base
-#
-#
-# # Check input
-# class Example(Base):
-#     """ Create a text-based application to verify that the key press works as expected """
-#     def initialize(self):
-#         print("Initializing program...")
-#
-#     def update(self):
-#         if self.input.is_key_down('space'):
-#             print("The 'space' key was just pressed down")
-#         if self.input.is_key_up('space'):
-#             print("The 'space' key was just pressed up")
-#         if self.input.is_key_pressed('right'):
-#             print("The 'right' key is currently being pressed")
-#
-#
-# # Instantiate this class and run the program
-# Example().run()
-# """
-
 from datetime import datetime
 from time import perf_counter
 import tkinter as tk
 from tkinter import ttk
 
-from OpenGL import GL
+from OpenGL.GL import GL_COLOR_BUFFER_BIT, GL_DEPTH_BUFFER_BIT, glClear, glClearColor, glViewport
 from pyopengltk import OpenGLFrame
 
 
 class GLFrame(OpenGLFrame):
-    def __init__(self, parent, logger, input_api):
+    def __init__(self, parent, logger):
         super().__init__(parent)
         self._logger = logger
-        self._input_api = input_api
         self._last_time = perf_counter()
         self._started = False
         self._viewport_size = (1, 1)
 
     def initgl(self):
-        GL.glClearColor(0.08, 0.10, 0.14, 1.0)
-        self.on_resize(self.winfo_width(), self.winfo_height())
+        glClearColor(0.08, 0.10, 0.14, 1.0)
         self._logger("INFO", "OpenGL initialized")
+        self.on_resize(self.winfo_width(), self.winfo_height())
 
     def redraw(self):
         now = perf_counter()
@@ -53,11 +26,10 @@ class GLFrame(OpenGLFrame):
         self._last_time = now
 
         width, height = self._viewport_size
-        GL.glViewport(0, 0, width, height)
+        glViewport(0, 0, width, height)
 
         self.update_scene(dt)
         self.draw_scene()
-        self._input_api.end_frame()
 
     def on_resize(self, width, height):
         width = max(1, int(width))
@@ -74,15 +46,8 @@ class GLFrame(OpenGLFrame):
             self._logger("INFO", f"Render loop started (dt={dt:.4f}s)")
             self._started = True
 
-        if self._input_api.is_key_down("space"):
-            self._logger("INFO", "The 'space' key was just pressed down")
-        if self._input_api.is_key_up("space"):
-            self._logger("INFO", "The 'space' key was just pressed up")
-        if self._input_api.is_key_pressed("right"):
-            self._logger("INFO", "The 'right' key is currently being pressed")
-
     def draw_scene(self):
-        GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
 
 class LogPanel(ttk.Frame):
@@ -110,17 +75,12 @@ class LogPanel(ttk.Frame):
 class GLApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("2-10 Keys Down/Up/Press")
+        self.title("2-01 Empty Window")
         self.geometry("1000x700")
         self.minsize(640, 480)
         self._last_window_size = (0, 0)
-        self._pressed_keys = set()
-        self._down_keys = set()
-        self._up_keys = set()
         self._create_layout()
         self.bind("<Configure>", self._on_window_resize)
-        self.bind_all("<KeyPress>", self._on_key_press)
-        self.bind_all("<KeyRelease>", self._on_key_release)
         self.log_panel.log("INFO", "Application started")
 
     def _create_layout(self):
@@ -132,17 +92,17 @@ class GLApp(tk.Tk):
         paned.add(gl_host, weight=7)
         paned.add(log_host, weight=3)
 
-        self.gl_frame = GLFrame(gl_host, logger=self._log, input_api=self)
-        self.gl_frame.pack(fill=tk.BOTH, expand=True)
-        self.gl_frame.animate = 1
-
         self.log_panel = LogPanel(log_host)
         self.log_panel.pack(fill=tk.BOTH, expand=True)
 
+        self.gl_frame = GLFrame(gl_host, logger=self.log_panel.log)
+        self.gl_frame.pack(fill=tk.BOTH, expand=True)
+        self.gl_frame.animate = 1
+
         self.after(100, lambda: paned.sashpos(0, int(self.winfo_height() * 0.7)))
-        self.after(120, self.gl_frame.focus_set)
 
     def _on_window_resize(self, event):
+        # Ignore child widget configure events; only handle root window resize.
         if event.widget is not self:
             return
 
@@ -154,56 +114,8 @@ class GLApp(tk.Tk):
         self.on_window_resized(event.width, event.height)
 
     def on_window_resized(self, width, height):
-        self._log("INFO", f"Window resized: {width}x{height}")
+        self.log_panel.log("INFO", f"Window resized: {width}x{height}")
         self.gl_frame.on_resize(self.gl_frame.winfo_width(), self.gl_frame.winfo_height())
-
-    def _on_key_press(self, event):
-        key = self._normalize_key(event.keysym)
-        if key is None:
-            return
-
-        if key not in self._pressed_keys:
-            self._down_keys.add(key)
-        self._pressed_keys.add(key)
-
-    def _on_key_release(self, event):
-        key = self._normalize_key(event.keysym)
-        if key is None:
-            return
-
-        if key in self._pressed_keys:
-            self._pressed_keys.remove(key)
-            self._up_keys.add(key)
-
-    def is_key_down(self, key):
-        return key in self._down_keys
-
-    def is_key_up(self, key):
-        return key in self._up_keys
-
-    def is_key_pressed(self, key):
-        return key in self._pressed_keys
-
-    def end_frame(self):
-        self._down_keys.clear()
-        self._up_keys.clear()
-
-    def _normalize_key(self, keysym):
-        if not keysym:
-            return None
-        key = keysym.lower()
-        keymap = {
-            "space": "space",
-            "left": "left",
-            "right": "right",
-            "up": "up",
-            "down": "down",
-        }
-        return keymap.get(key)
-
-    def _log(self, level, message):
-        if hasattr(self, "log_panel"):
-            self.log_panel.log(level, message)
 
 
 def main():
